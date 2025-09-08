@@ -1,0 +1,31 @@
+{
+  "name": "data-agent-builder",
+  "version": "1.0.0",
+  "description": "A tool that analyzes data files and generates intelligent TypeScript tools and chat agents using the Umwelten framework",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "demo": "tsx src/index.ts demo",
+    "chat": "tsx src/index.ts chat",
+    "test": "tsx --test test/**/*.test.ts",
+    "build": "tsc",
+    "start": "tsx src/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.12.3",
+  "devDependencies": {
+    "@types/node": "^24.3.1",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "commander": "^14.0.0",
+    "csv-parser": "^3.2.0",
+    "umwelten": "^0.2.1",
+    "xlsx": "^0.18.5",
+    "zod": "^3.25.76"
+  }
+}
