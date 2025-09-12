@@ -4,15 +4,22 @@
 	"type": "module",
 	"scripts": {
 		"test": "tsx --test test/**/*.test.ts",
-		"dev": "tsx src/index.ts"
+		"dev": "tsx src/index.ts",
+		"models": "umwelten models",
+		"analyze": "tsx src/analyzeFile.ts"
 	},
 	"dependencies": {
 		"@types/xlsx": "^0.0.36",
+		"ai": "^5.0.41",
+		"sqlite3": "^5.1.7",
 		"umwelten": "^0.3.2",
-		"xlsx": "^0.18.5"
+		"xlsx": "^0.18.5",
+		"zod": "^4.1.8"
 	},
 	"devDependencies": {
 		"@types/node": "^22.0.0",
+		"@types/sqlite3": "^3.1.11",
+		"dotenv": "^17.2.2",
 		"tsx": "^4.0.0",
 		"typescript": "^5.0.0"
 	}
