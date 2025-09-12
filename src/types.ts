@@ -1,48 +1,66 @@
-import { z } from 'zod';
+/**
+ * Custom error classes for Excel reader operations
+ */
 
-// File analysis types
-export const FileAnalysisSchema = z.object({
-  fileName: z.string(),
-  fileType: z.enum(['excel', 'csv']),
-  fileSize: z.number(),
-  rowCount: z.number(),
-  columnCount: z.number(),
-  columns: z.array(z.object({
-    name: z.string(),
-    type: z.enum(['string', 'number', 'date', 'boolean', 'mixed']),
-    sampleValues: z.array(z.string()),
-    nullCount: z.number(),
-    uniqueCount: z.number(),
-  })),
-  sheets: z.array(z.string()).optional(), // For Excel files
-  analysis: z.object({
-    hasHeaders: z.boolean(),
-    dataQuality: z.enum(['excellent', 'good', 'fair', 'poor']),
-    potentialIssues: z.array(z.string()),
-    businessContext: z.array(z.string()),
-  }),
-});
+export class FileNotFoundError extends Error {
+  constructor(filePath: string) {
+    super(`File not found: ${filePath}`);
+    this.name = 'FileNotFoundError';
+  }
+}
 
-export type FileAnalysis = z.infer<typeof FileAnalysisSchema>;
+export class InvalidFileError extends Error {
+  constructor(filePath: string, reason?: string) {
+    super(`Invalid Excel file: ${filePath}${reason ? ` - ${reason}` : ''}`);
+    this.name = 'InvalidFileError';
+  }
+}
 
-// Tool generation types
-export const ToolSchema = z.object({
-  name: z.string(),
-  description: z.string(),
-  parameters: z.record(z.any()),
-  returnType: z.string(),
-  businessValue: z.string(),
-});
+export class SheetNotFoundError extends Error {
+  constructor(sheetName: string) {
+    super(`Sheet not found: ${sheetName}`);
+    this.name = 'SheetNotFoundError';
+  }
+}
 
-export type Tool = z.infer<typeof ToolSchema>;
+export class LoadError extends Error {
+  constructor(filePath: string, reason?: string) {
+    super(`Failed to load file: ${filePath}${reason ? ` - ${reason}` : ''}`);
+    this.name = 'LoadError';
+  }
+}
 
-// Agent configuration types
-export const AgentConfigSchema = z.object({
-  name: z.string(),
-  description: z.string(),
-  tools: z.array(ToolSchema),
-  systemPrompt: z.string(),
-  sampleQueries: z.array(z.string()),
-});
+/**
+ * Configuration for parsing Excel files with different structures
+ */
+export interface ExcelParserConfig {
+  /** Number of metadata rows at the top */
+  metadataRows?: number;
+  /** Row number containing headers (1-based) */
+  headerRow?: number;
+  /** Row number where data starts (1-based) */
+  dataStartRow?: number;
+  /** Whether there are data rows above the header */
+  hasDataAboveHeader?: boolean;
+}
 
-export type AgentConfig = z.infer<typeof AgentConfigSchema>;
+/**
+ * Parsed data structure
+ */
+export interface ParsedExcelData {
+  /** Metadata rows */
+  metadata: string[][];
+  /** Header row as array of column names */
+  headers: string[];
+  /** Data rows */
+  data: string[][];
+}
+
+/**
+ * Excel reader options
+ */
+export interface ExcelReaderOptions {
+  /** Default number of rows to return when not specified */
+  defaultMaxRows?: number;
+}
+
