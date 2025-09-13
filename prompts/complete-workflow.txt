@@ -1,0 +1,22 @@
+Complete Excel to Database Import Workflow
+
+Please perform the complete Excel file analysis and database import workflow:
+
+1. First, get the list of sheets in the Excel file
+2. Examine the raw data from each sheet (first 20 rows) to understand the structure
+3. Analyze the data and determine the best parser configuration (header row, data start row, etc.)
+4. Get the parsed headers and propose meaningful SQL column names that preserve the original meaning while being SQL-compatible
+5. Decide on appropriate SQL data types for each column (TEXT, INTEGER, REAL, DATE, DATETIME)
+6. Choose the best import strategy (single_table for similar sheets, separate_tables for different sheets)
+7. Write the configuration files (parser config and table metadata)
+8. Create the SQLite table with your proposed meaningful column names
+9. Import all the data from the Excel file into the database
+
+For column names, follow these guidelines:
+- Use lowercase with underscores (e.g., "Overall Rank" → "overall_rank")
+- Preserve the original meaning (e.g., "Brand Name" → "brand_name")
+- Avoid SQL reserved words (select, from, where, order, group, etc.)
+- Keep names descriptive and readable
+- Examples: "Total Followers" → "total_followers", "From: 2025-08-01" → "date_from"
+
+Provide clear feedback about your analysis, decisions, and the import results. Make sure to show the column mappings so I can see how the original Excel headers were transformed into SQL column names.

@@ -1,66 +1,67 @@
 # Data Agent Builder
 
-A tool for analyzing Excel files and importing their data into SQLite databases.
+An LLM-driven tool for analyzing Excel files and importing their data into SQLite databases. The AI agent handles all analysis, decision-making, and data processing while TypeScript provides simple execution tools.
 
 ## Features
 
-- Analyze Excel file structure and extract sheet information
-- Configure parsers to handle complex Excel layouts with metadata, headers, and data
-- Generate SQL table definitions based on Excel data structure
-- Create SQLite databases and populate them with Excel data
-- Interactive AI assistant to guide through the process
+- **LLM-Driven Architecture**: AI agent makes all decisions about parsing, data types, and import strategy
+- **Smart Column Naming**: AI proposes meaningful SQL column names that preserve original meaning
+- **Excel Analysis**: Examine file structure, sheets, headers, and data patterns
+- **Automatic Database Creation**: Generate SQLite tables with appropriate data types
+- **Data Import**: Import Excel data with intelligent column mapping
+- **Interactive Chat Interface**: Natural language interaction with the AI agent
 
 ## Usage
 
 ### Basic Usage
 
 ```bash
-# Using pnpm script
-pnpm analyze <excel-file-path> <workspace-directory>
-
-# Using tsx directly
+# Interactive mode - start a chat session
 tsx src/analyzeFile.ts <excel-file-path> <workspace-directory>
+
+# With initial prompt for direct testing
+tsx src/analyzeFile.ts <excel-file-path> <workspace-directory> "your prompt here"
 ```
 
 ### Example
 
 ```bash
-# Create a workspace directory
-mkdir my-workspace
+# Interactive analysis
+tsx src/analyzeFile.ts "data/social-media-data.xlsx" "output"
 
-# Analyze an Excel file
-pnpm analyze "data/my-excel-file.xlsx" "my-workspace"
+# Direct workflow with prompt
+tsx src/analyzeFile.ts "data/social-media-data.xlsx" "output" "Analyze this file and import all data into SQLite"
 ```
 
 ## How it Works
 
-1. **Load Excel File**: The tool loads and validates the specified Excel file
-2. **Interactive Analysis**: An AI assistant helps you:
-   - Examine the file structure and available sheets
-   - View raw data to understand the layout
-   - Configure a parser to handle metadata, headers, and data rows
-   - Generate appropriate SQL table definitions
-   - Create and populate SQLite tables
+1. **AI Agent Initialization**: The LLM agent starts with access to simple TypeScript tools
+2. **File Analysis**: The AI examines Excel files using tools to:
+   - Get sheet information and structure
+   - View raw data to understand layouts
+   - Analyze headers and propose meaningful SQL column names
+   - Determine appropriate data types and import strategies
+3. **Database Creation**: The AI creates SQLite tables with intelligent column mappings
+4. **Data Import**: The AI imports Excel data using the proposed column mappings
 
 ## Output Files
 
 The tool creates the following files in the workspace directory:
 
 - `parserConfig.json` - Parser configuration for the Excel file
-- `createTableSql.sql` - SQL CREATE TABLE statement
-- `importData.ts` - TypeScript method for data import (optional)
+- `dataLoaderMetadata.json` - Table configuration with column mappings
 - `data.db` - SQLite database with the imported data
 
 ## Tools Available
 
-The AI assistant has access to these tools:
+The AI assistant has access to these simple tools:
 
-- `sheetsTool` - Get list of sheets in the Excel file
-- `rawDataTool` - Get raw data from a specific sheet
-- `writeParserTool` - Configure and save parser settings
-- `writeTableDefinitionTool` - Generate and create SQL table
-- `writeImportDataTool` - Generate TypeScript import method
-- `populateTableTool` - Import Excel data into SQLite table
+- `getSheetsTool` - Get list of sheets in the Excel file
+- `getRawDataTool` - Get raw data from a specific sheet
+- `getParsedHeadersTool` - Get parsed headers and propose meaningful SQL column names
+- `writeConfigTool` - Save parser and table configuration
+- `createTableTool` - Create SQLite table with column mappings
+- `importDataTool` - Import Excel data into SQLite table
 
 ## Requirements
 
@@ -78,6 +79,13 @@ pnpm install
 
 - `xlsx` - Excel file reading
 - `sqlite3` - SQLite database operations
-- `umwelten` - AI framework
-- `ai` - AI tool definitions
-- `zod` - Schema validation
+- `umwelten` - AI framework for agent interactions
+- `zod` - Schema validation for tool inputs
+
+## Architecture
+
+This tool follows an **LLM-driven architecture** where:
+- The AI agent makes all complex decisions (parsing, data types, column naming)
+- TypeScript provides simple, focused tools for execution
+- The LLM analyzes Excel structure and proposes meaningful SQL column names
+- All analysis logic is handled by the AI, not hardcoded TypeScript

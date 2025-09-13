@@ -1,31 +1,25 @@
 import * as XLSX from 'xlsx';
 import * as fs from 'fs';
-import * as path from 'path';
 import {
   FileNotFoundError,
   InvalidFileError,
   SheetNotFoundError,
   LoadError,
   ExcelParserConfig,
-  ParsedExcelData,
-  ExcelReaderOptions
+  ParsedExcelData
 } from './types.js';
 
 /**
- * ExcelReader class for examining Excel files
+ * Simplified ExcelReader class - Basic Excel reading operations only
+ * All analysis logic is handled by the LLM, not this class
  */
 export class ExcelReader {
   private filePath: string;
   private workbook: XLSX.WorkBook | null = null;
-  private options: ExcelReaderOptions;
   private parserConfig: ExcelParserConfig | null = null;
 
-  constructor(filePath: string, options: ExcelReaderOptions = {}) {
+  constructor(filePath: string) {
     this.filePath = filePath;
-    this.options = {
-      defaultMaxRows: 20,
-      ...options
-    };
   }
 
   /**
@@ -45,10 +39,9 @@ export class ExcelReader {
         throw new LoadError(this.filePath, 'File is not readable');
       }
 
-      // Read the file
+      // Read and parse the Excel file
       const fileBuffer = fs.readFileSync(this.filePath);
       
-      // Parse the Excel file
       try {
         this.workbook = XLSX.read(fileBuffer, { type: 'buffer' });
       } catch (error) {
@@ -82,6 +75,7 @@ export class ExcelReader {
 
   /**
    * Get raw data from a specific sheet as array of arrays
+   * No analysis - just returns the raw data for LLM to analyze
    */
   getRawData(sheetName: string, maxRows?: number): string[][] {
     if (!this.workbook) {
@@ -105,33 +99,30 @@ export class ExcelReader {
     }) as string[][];
 
     // Limit rows if maxRows is specified
-    const limit = maxRows ?? this.options.defaultMaxRows;
-    return data.slice(0, limit);
-  }
-
-  /**
-   * Get all rows from a specific sheet
-   */
-  getAllRows(sheetName: string): string[][] {
-    return this.getRawData(sheetName, undefined);
+    if (maxRows !== undefined) {
+      return data.slice(0, maxRows);
+    }
+    
+    return data;
   }
 
   /**
    * Configure parser for structured data extraction
+   * LLM decides the configuration, this just stores it
    */
   configureParser(config: ExcelParserConfig): void {
     this.parserConfig = config;
   }
 
   /**
-   * Get parsed data based on configuration
+   * Get parsed data based on LLM-provided configuration
    */
-  getParsedData(sheetName: string, maxRows?: number): ParsedExcelData {
+  getParsedData(sheetName: string): ParsedExcelData {
     if (!this.parserConfig) {
       throw new Error('Parser not configured. Call configureParser() first.');
     }
 
-    const allData = this.getAllRows(sheetName);
+    const allData = this.getRawData(sheetName); // Get all data
     const config = this.parserConfig;
 
     // Extract metadata rows
@@ -150,12 +141,6 @@ export class ExcelReader {
     if (config.hasDataAboveHeader && config.headerRow) {
       const dataAboveHeader = allData.slice(0, headerRowIndex);
       data = [...dataAboveHeader, ...data];
-    }
-
-    // Limit data rows if maxRows is specified
-    const limit = maxRows ?? this.options.defaultMaxRows;
-    if (limit !== undefined) {
-      data = data.slice(0, limit);
     }
 
     return {
@@ -180,4 +165,3 @@ export class ExcelReader {
     };
   }
 }
-

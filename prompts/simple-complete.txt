@@ -1,0 +1,1 @@
+Analyze this Excel file and create a complete database import. Get the sheets, examine the data structure, propose meaningful SQL column names, create the database table, and import all the data. Show me the column mappings and import results.
