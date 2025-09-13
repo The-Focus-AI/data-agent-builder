@@ -1,4 +1,4 @@
-import { Interaction, CLIInterface } from "umwelten/dist/ui/index.js";
+import { Interaction, CLIInterface, getChatCommands } from "umwelten/dist/ui/index.js";
 import { Stimulus } from "umwelten/dist/stimulus/stimulus.js";
 import { ExcelReader } from "./ExcelReader.js";
 import { tool } from "ai";
@@ -321,7 +321,9 @@ if(initialPrompt) {
     await interaction.streamText();
 }
   const cli = new CLIInterface();
-  
+
+  cli.addCommands(getChatCommands());
+  cli.setShowStatsAfterResponse(true);
   // Cleanup function to close database connection
   process.on('SIGINT', () => {
     console.log('Shutting down...');

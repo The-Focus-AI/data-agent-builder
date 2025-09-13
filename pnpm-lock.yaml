@@ -18,8 +18,8 @@ importers:
         specifier: ^5.1.7
         version: 5.1.7
       umwelten:
-        specifier: ^0.3.2
-        version: 0.3.2
+        specifier: ^0.3.3
+        version: 0.3.3
       xlsx:
         specifier: ^0.18.5
         version: 0.18.5
@@ -1084,8 +1084,8 @@ packages:
     resolution: {integrity: sha512-rvKSBiC5zqCCiDZ9kAOszZcDvdAHwwIKJG33Ykj43OKcWsnmcBRL09YTU4nOeHZ8Y2a7l1MgTd08SBe9A8Qj6A==}
     engines: {node: '>=18'}
 
-  umwelten@0.3.2:
-    resolution: {integrity: sha512-zcTmZjZpzkd+6UPTK4afgJB9t4Hio9Bp5rdWiF3eXlg2C3K27Zlj1pTmbsaXcFyfJWjLOThQTIKrtsdiVx7fRw==}
+  umwelten@0.3.3:
+    resolution: {integrity: sha512-+1cCUOuSG5nXafC2KUlycEkHe0JuvWvZiXR4ln7RiSbSSVijB9dfhWeFP4uWXEqQky6iHf0plLWjt7mej2P3aQ==}
     engines: {node: '>=20.0.0'}
     hasBin: true
 
@@ -2242,7 +2242,7 @@ snapshots:
 
   uint8array-extras@1.5.0: {}
 
-  umwelten@0.3.2:
+  umwelten@0.3.3:
     dependencies:
       '@ai-sdk/google': 2.0.13(zod@4.1.8)
       '@ai-sdk/openai-compatible': 1.0.15(zod@4.1.8)
