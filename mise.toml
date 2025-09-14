@@ -1,2 +1,18 @@
 [tools]
-"npm:umwelten" = "0.3.0"
+node = "24"
+"npm:umwelten" = "0.3.3"
+pnpm = "latest"
+
+[env]
+_.path = ['./node_modules/.bin']
+
+[tasks.pnpm-install]
+description = 'Installs dependencies with pnpm'
+run = 'pnpm install'
+sources = ['package.json', 'pnpm-lock.yaml', 'mise.toml']
+outputs = ['node_modules/.pnpm/lock.yaml']
+
+[tasks.dev]
+description = 'Calls your dev script in `package.json`'
+run = 'node --run dev'
+depends = ['pnpm-install']
