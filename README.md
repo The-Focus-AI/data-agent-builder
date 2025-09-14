@@ -71,7 +71,22 @@ The AI assistant has access to these simple tools:
 
 ## Installation
 
+### Option 1: Dev Container (Recommended)
+
+1. Open the project in VS Code
+2. When prompted, click "Reopen in Container" or use Command Palette: "Dev Containers: Reopen in Container"
+3. The container will automatically set up mise and install all dependencies
+
+### Option 2: Local Installation
+
 ```bash
+# Install mise (if not already installed)
+curl https://mise.run | sh
+
+# Install tools specified in mise.toml
+mise install
+
+# Install project dependencies
 pnpm install
 ```
 
@@ -89,3 +104,13 @@ This tool follows an **LLM-driven architecture** where:
 - TypeScript provides simple, focused tools for execution
 - The LLM analyzes Excel structure and proposes meaningful SQL column names
 - All analysis logic is handled by the AI, not hardcoded TypeScript
+
+## Development Environment
+
+The project includes a **Dev Container** configuration that provides:
+- **Consistent Environment**: Same Node.js and tool versions across all machines
+- **mise Integration**: Automatic tool installation and management via mise
+- **VS Code Integration**: Pre-configured extensions and settings
+- **GitHub Copilot Ready**: Optimized for AI-assisted development
+
+The dev container ensures that GitHub Copilot and other AI tools have access to the correct mise-managed environment.
