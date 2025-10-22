@@ -3,3 +3,6 @@ data/
 .DS_Store
 .env
 output*
+example-output/
+test-workspace/
+test-output-*/
