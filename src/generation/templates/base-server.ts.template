@@ -1,0 +1,133 @@
+#!/usr/bin/env node
+
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+  Tool,
+} from "@modelcontextprotocol/sdk/types.js";
+import Database from "better-sqlite3";
+import { z } from "zod";
+import fs from "fs";
+import path from "path";
+
+// Schema configuration (generated from analysis)
+const SCHEMA = {{SCHEMA_JSON}};
+
+// Initialize database
+let db: Database.Database | null = null;
+
+/**
+ * Initialize the database with a data file
+ */
+function initializeDatabase(dataPath: string): void {
+  if (!fs.existsSync(dataPath)) {
+    throw new Error(`Data file not found: ${dataPath}`);
+  }
+
+  // Close existing connection
+  if (db) {
+    db.close();
+  }
+
+  db = new Database(dataPath);
+  console.error(`Database initialized: ${dataPath}`);
+}
+
+/**
+ * Load data from a CSV file into the database
+ */
+function loadCSVData(csvPath: string): { rowsLoaded: number } {
+  if (!db) {
+    throw new Error("Database not initialized");
+  }
+
+  // Implementation depends on your CSV structure
+  // This is a placeholder that will be customized per schema
+  const csvContent = fs.readFileSync(csvPath, 'utf-8');
+  const lines = csvContent.split('\n').filter(line => line.trim());
+  const headers = lines[0].split(',');
+
+  // Validate headers match schema
+  const expectedColumns = SCHEMA.columns.map((col: any) => col.name);
+  const actualColumns = headers.map(h => h.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_'));
+
+  // Begin transaction for bulk insert
+  const insert = db.prepare(`
+    INSERT INTO ${SCHEMA.tableName} (${expectedColumns.join(', ')})
+    VALUES (${expectedColumns.map(() => '?').join(', ')})
+  `);
+
+  const insertMany = db.transaction((rows: any[]) => {
+    for (const row of rows) {
+      insert.run(row);
+    }
+  });
+
+  const dataRows = lines.slice(1).map(line => {
+    const values = line.split(',').map(v => v.trim());
+    return values;
+  });
+
+  insertMany(dataRows);
+
+  return { rowsLoaded: dataRows.length };
+}
+
+// MCP Server Setup
+const server = new Server(
+  {
+    name: "{{SERVER_NAME}}",
+    version: "1.0.0",
+  },
+  {
+    capabilities: {
+      tools: {},
+    },
+  }
+);
+
+// Tool definitions
+{{TOOL_DEFINITIONS}}
+
+// Request handlers
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return {
+    tools: [
+      {{TOOL_LIST}}
+    ],
+  };
+});
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
+
+  try {
+    {{TOOL_HANDLERS}}
+
+    throw new Error(`Unknown tool: ${name}`);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Error: ${errorMessage}`,
+        },
+      ],
+    };
+  }
+});
+
+// Start server
+async function main() {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error("{{SERVER_NAME}} MCP Server running on stdio");
+}
+
+main().catch((error) => {
+  console.error("Fatal error:", error);
+  process.exit(1);
+});

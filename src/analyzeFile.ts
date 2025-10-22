@@ -8,6 +8,7 @@ import path from "path";
 import sqlite3 from "sqlite3";
 import { createTable, importData } from "./simpleDataLoader.js";
 import { ColumnMapping, TableConfig } from "./types.js";
+import { MCPServerGenerator } from "./generation/MCPServerGenerator.js";
 
 /**
  * Normalize Excel header names to valid SQL column names
@@ -245,27 +246,27 @@ const importDataTool = tool({
             // Read the metadata configuration
             const metadataPath = path.join(workspaceDir, "dataLoaderMetadata.json");
             const parserConfigPath = path.join(workspaceDir, "parserConfig.json");
-            
+
             if (!fs.existsSync(metadataPath)) {
                 throw new Error("dataLoaderMetadata.json not found. Please run writeConfigTool first.");
             }
             if (!fs.existsSync(parserConfigPath)) {
                 throw new Error("parserConfig.json not found. Please run writeConfigTool first.");
             }
-            
+
             const tableConfig: TableConfig = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
             const parserConfig = JSON.parse(fs.readFileSync(parserConfigPath, 'utf8'));
-            
+
             // Configure the parser
             excelReader.configureParser(parserConfig);
-            
+
             // Get parsed data
             const parsedData = excelReader.getParsedData(sheetName);
             console.log(`Retrieved ${parsedData.data.length} rows of data from sheet '${sheetName}'`);
 
             // Create mapping from original headers to SQL column names
             const headerToSqlMap = new Map<string, string>();
-            
+
             // Use stored column mappings if available
             if (tableConfig.columnMappings && tableConfig.columnMappings.length > 0) {
                 console.log("Using stored column mappings from metadata");
@@ -273,7 +274,7 @@ const importDataTool = tool({
                     headerToSqlMap.set(mapping.originalHeader, mapping.sqlColumnName);
                 });
             }
-            
+
             // Map the headers to SQL column names with fallback to normalization
             const sqlHeaders = parsedData.headers.map((header, index) => {
                 const mappedName = headerToSqlMap.get(header);
@@ -306,13 +307,89 @@ const importDataTool = tool({
     }
 });
 
+// Tool 6: Generate MCP Server (NEW - Phase 2)
+const generateMCPServerTool = tool({
+    description: "Generate a complete MCP (Model Context Protocol) server from the analyzed data schema. This creates a standalone server that can be used with Claude or other LLM clients to query future data files with the same structure.",
+    inputSchema: z.object({
+        serverName: z.string().optional().describe("Name for the MCP server (defaults to table name)"),
+        description: z.string().optional().describe("Description of what the server does"),
+        outputDir: z.string().optional().describe("Output directory for the MCP server (defaults to workspace/mcp-server)")
+    }),
+    execute: async ({ serverName, description, outputDir }) => {
+        try {
+            // Read the metadata configuration
+            const metadataPath = path.join(workspaceDir, "dataLoaderMetadata.json");
+
+            if (!fs.existsSync(metadataPath)) {
+                throw new Error("dataLoaderMetadata.json not found. Please complete the data import workflow first.");
+            }
+
+            const tableConfig: TableConfig = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+
+            // Create MCP server configuration
+            const mcpConfig = MCPServerGenerator.fromTableConfig(
+                tableConfig,
+                serverName,
+                description
+            );
+
+            // Determine output directory
+            const mcpOutputDir = outputDir || path.join(workspaceDir, "mcp-server");
+
+            // Generate the MCP server
+            const generator = new MCPServerGenerator(mcpConfig);
+            generator.generate(mcpOutputDir);
+
+            console.log(`\n${'='.repeat(60)}`);
+            console.log(`MCP SERVER GENERATED SUCCESSFULLY!`);
+            console.log(`${'='.repeat(60)}`);
+            console.log(`Location: ${mcpOutputDir}`);
+            console.log(`Server Name: ${mcpConfig.serverName}`);
+            console.log(`Package: ${mcpConfig.packageName}`);
+            console.log(`\nGenerated ${mcpConfig.tools.length} tools:`);
+            mcpConfig.tools.forEach((tool, idx) => {
+                console.log(`  ${idx + 1}. ${tool.name} - ${tool.description}`);
+            });
+            console.log(`\nNext steps:`);
+            console.log(`  1. cd ${mcpOutputDir}`);
+            console.log(`  2. npm install`);
+            console.log(`  3. npm run build`);
+            console.log(`  4. Configure in Claude Desktop (see README.md)`);
+            console.log(`${'='.repeat(60)}\n`);
+
+            return {
+                message: "MCP server generated successfully!",
+                serverName: mcpConfig.serverName,
+                packageName: mcpConfig.packageName,
+                outputDirectory: mcpOutputDir,
+                toolsGenerated: mcpConfig.tools.length,
+                tools: mcpConfig.tools.map(t => ({
+                    name: t.name,
+                    description: t.description
+                })),
+                nextSteps: [
+                    `cd ${mcpOutputDir}`,
+                    "npm install",
+                    "npm run build",
+                    "Configure in Claude Desktop (see README.md in the generated directory)"
+                ]
+            };
+        } catch (error) {
+            console.error(`Error generating MCP server: ${error}`);
+            throw error;
+        }
+    }
+});
+
 const excelTool = new Stimulus({
-    role: "Excel Analysis and Import Assistant",
-    objective: "Analyze Excel files and import them into SQLite databases",
+    role: "Excel Analysis and Import Assistant with MCP Server Generation",
+    objective: "Analyze Excel files, import them into SQLite databases, and generate MCP servers for future data querying",
     instructions: [
-        "You are an Excel file expert that analyzes files and imports them into databases",
+        "You are an Excel file expert that analyzes files, imports them into databases, and generates MCP servers",
         "Use the available tools to examine the file structure and data",
         "Make all decisions about parsing, data types, and import strategies",
+        "",
+        "PHASE 1: DATA ANALYSIS AND IMPORT",
         "Follow this workflow:",
         "1. Get the list of sheets using getSheetsTool",
         "2. Examine each sheet's raw data using getRawDataTool",
@@ -323,22 +400,35 @@ const excelTool = new Stimulus({
         "7. Examples: 'Overall Rank' → 'overall_rank', 'Brand Name' → 'brand_name', 'Total Followers' → 'total_followers'",
         "8. Decide on appropriate SQL data types for each column",
         "9. Choose import strategy (single_table for similar sheets, separate_tables for different sheets)",
-        "10. Write the configuration using writeConfigTool - this now includes columnMappings that will be stored in metadata",
+        "10. Write the configuration using writeConfigTool - this includes columnMappings stored in metadata",
         "11. Create the SQLite table using createTableTool (reads from metadata automatically)",
         "12. Import the data using importDataTool (reads mappings from metadata automatically)",
+        "",
+        "PHASE 2: MCP SERVER GENERATION",
+        "After successfully importing the data:",
+        "13. Generate an MCP server using generateMCPServerTool",
+        "14. The MCP server will include automatically generated tools based on the data schema:",
+        "    - query_data: Query with filters on any column",
+        "    - aggregate_data: Calculate sum, avg, count, min, max on numeric columns",
+        "    - group_by: Group data by categories with aggregations",
+        "    - time_series_analysis: Analyze data over time (if date columns exist)",
+        "    - load_data: Load new CSV files with the same structure",
+        "15. The generated MCP server can be used in future conversations to query new data files",
+        "",
         "CRITICAL: You must propose meaningful column names that preserve the original meaning",
-        "The column mappings are now stored in dataLoaderMetadata.json for persistence and reusability",
-        "Provide clear feedback about your analysis and decisions"
+        "The column mappings are stored in dataLoaderMetadata.json for persistence and reusability",
+        "Provide clear feedback about your analysis, decisions, and the generated MCP server capabilities"
     ],
-    tools: { 
-        getSheetsTool, 
-        getRawDataTool, 
+    tools: {
+        getSheetsTool,
+        getRawDataTool,
         getParsedHeadersTool,
-        writeConfigTool, 
-        createTableTool, 
-        importDataTool 
+        writeConfigTool,
+        createTableTool,
+        importDataTool,
+        generateMCPServerTool
     },
-    maxToolSteps: 15
+    maxToolSteps: 20
   });
   
   const interaction = new Interaction(modelDetails, excelTool);

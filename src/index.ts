@@ -11,10 +11,14 @@ export { createTable, importData, tableExists, getTableInfo } from './simpleData
 export type { Column, ImportResult } from './simpleDataLoader.js';
 
 // Essential Types
-export type { ExcelParserConfig, ParsedExcelData, ExcelReaderOptions } from './types.js';
-export { 
-  FileNotFoundError, 
-  InvalidFileError, 
-  SheetNotFoundError, 
-  LoadError 
+export type { ExcelParserConfig, ParsedExcelData, ExcelReaderOptions, TableConfig, ColumnMapping } from './types.js';
+export {
+  FileNotFoundError,
+  InvalidFileError,
+  SheetNotFoundError,
+  LoadError
 } from './types.js';
+
+// MCP Server Generation
+export { MCPServerGenerator, ToolSuggester } from './generation/MCPServerGenerator.js';
+export type { MCPTool, MCPServerConfig } from './generation/MCPServerGenerator.js';
