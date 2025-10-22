@@ -7,6 +7,7 @@ import fs from "fs";
 import path from "path";
 import sqlite3 from "sqlite3";
 import { createTable, importData } from "./simpleDataLoader.js";
+import { ColumnMapping, TableConfig } from "./types.js";
 
 /**
  * Normalize Excel header names to valid SQL column names
@@ -49,6 +50,12 @@ let modelDetails = {
     name: "qwen3:latest",
     provider: "ollama"
 }
+
+// modelDetails = {
+//     name: "openai/gpt-4o",
+//     provider: "github-models"
+// }
+
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -155,6 +162,12 @@ const writeConfigTool = tool({
             tableName: z.string().describe("Name of the SQLite table to create"),
             importStrategy: z.enum(['single_table', 'separate_tables']).describe("How to handle multiple sheets"),
             sheetColumnName: z.string().optional().describe("Column name to store sheet name (for single_table strategy)"),
+            columnMappings: z.array(z.object({
+                originalHeader: z.string().describe("Original Excel header name"),
+                sqlColumnName: z.string().describe("Meaningful SQL column name (lowercase, underscores, no special chars)"),
+                dataType: z.enum(['TEXT', 'INTEGER', 'REAL', 'DATE', 'DATETIME']).describe("SQL data type"),
+                nullable: z.boolean().describe("Whether the column allows null values")
+            })).describe("Mapping from original headers to meaningful SQL column names"),
             columns: z.array(z.object({
                 name: z.string().describe("Column name"),
                 dataType: z.enum(['TEXT', 'INTEGER', 'REAL', 'DATE', 'DATETIME']).describe("SQL data type"),
@@ -184,66 +197,65 @@ const writeConfigTool = tool({
 
 // Tool 4: Create table (simple SQL execution)
 const createTableTool = tool({
-    description: "Create SQLite table using meaningful column names proposed by the LLM",
-    inputSchema: z.object({
-        tableName: z.string().describe("Name of the table to create"),
-        columnMappings: z.array(z.object({
-            originalHeader: z.string().describe("Original Excel header name"),
-            sqlColumnName: z.string().describe("Meaningful SQL column name (lowercase, underscores, no special chars)"),
-            dataType: z.string().describe("SQL data type (TEXT, INTEGER, REAL, DATE, DATETIME)"),
-            nullable: z.boolean().describe("Whether the column allows null values")
-        })).describe("Mapping from original headers to meaningful SQL column names")
-    }),
-    execute: async ({ tableName, columnMappings }) => {
+    description: "Create SQLite table using the configuration from dataLoaderMetadata.json",
+    inputSchema: z.object({}),
+    execute: async () => {
         try {
-            // Convert mappings to column definitions
-            const columns = columnMappings.map(mapping => ({
-                name: mapping.sqlColumnName,
-                dataType: mapping.dataType,
-                nullable: mapping.nullable
-            }));
+            // Read the metadata configuration
+            const metadataPath = path.join(workspaceDir, "dataLoaderMetadata.json");
+            if (!fs.existsSync(metadataPath)) {
+                throw new Error("dataLoaderMetadata.json not found. Please run writeConfigTool first.");
+            }
             
-            await createTable(dbPath, tableName, columns);
-            console.log(`Table '${tableName}' created successfully with ${columns.length} columns`);
+            const tableConfig: TableConfig = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
             
-            // Log the mapping for clarity
-            console.log("Column mappings:");
-            columnMappings.forEach(mapping => {
-                console.log(`  "${mapping.originalHeader}" → "${mapping.sqlColumnName}" (${mapping.dataType})`);
-            });
+            // Create the table using the column definitions
+            await createTable(dbPath, tableConfig.tableName, tableConfig.columns);
+            console.log(`Table '${tableConfig.tableName}' created successfully with ${tableConfig.columns.length} columns`);
+            
+            // Log the column mappings if available
+            if (tableConfig.columnMappings && tableConfig.columnMappings.length > 0) {
+                console.log("Column mappings:");
+                tableConfig.columnMappings.forEach(mapping => {
+                    console.log(`  "${mapping.originalHeader}" → "${mapping.sqlColumnName}" (${mapping.dataType})`);
+                });
+            }
             
             return {
-                message: `Table '${tableName}' created successfully`,
-                tableName,
-                columnCount: columns.length,
-                columnMappings
+                message: `Table '${tableConfig.tableName}' created successfully`,
+                tableName: tableConfig.tableName,
+                columnCount: tableConfig.columns.length,
+                columnMappings: tableConfig.columnMappings || []
             };
-            } catch (error) {
+        } catch (error) {
             console.error(`Error creating table: ${error}`);
             throw error;
-            }
+        }
     }
 });
 
 // Tool 5: Import data (simple data loading)
 const importDataTool = tool({
-    description: "Import Excel data into the created SQLite table using the column mappings",
+    description: "Import Excel data into the created SQLite table using column mappings from metadata",
     inputSchema: z.object({
-        sheetName: z.string().describe("Name of the sheet to import data from"),
-        tableName: z.string().describe("Name of the SQLite table to import data into"),
-        parserConfig: z.object({
-                metadataRows: z.number().optional(),
-            headerRow: z.number(),
-            dataStartRow: z.number(),
-            hasDataAboveHeader: z.boolean().optional()
-        }).describe("Parser configuration for extracting data from the sheet"),
-        columnMappings: z.array(z.object({
-            originalHeader: z.string().describe("Original Excel header name"),
-            sqlColumnName: z.string().describe("SQL column name in the table")
-        })).describe("Mapping from original headers to SQL column names")
+        sheetName: z.string().describe("Name of the sheet to import data from")
     }),
-    execute: async ({ sheetName, tableName, parserConfig, columnMappings }) => {
+    execute: async ({ sheetName }) => {
         try {
+            // Read the metadata configuration
+            const metadataPath = path.join(workspaceDir, "dataLoaderMetadata.json");
+            const parserConfigPath = path.join(workspaceDir, "parserConfig.json");
+            
+            if (!fs.existsSync(metadataPath)) {
+                throw new Error("dataLoaderMetadata.json not found. Please run writeConfigTool first.");
+            }
+            if (!fs.existsSync(parserConfigPath)) {
+                throw new Error("parserConfig.json not found. Please run writeConfigTool first.");
+            }
+            
+            const tableConfig: TableConfig = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+            const parserConfig = JSON.parse(fs.readFileSync(parserConfigPath, 'utf8'));
+            
             // Configure the parser
             excelReader.configureParser(parserConfig);
             
@@ -253,26 +265,39 @@ const importDataTool = tool({
 
             // Create mapping from original headers to SQL column names
             const headerToSqlMap = new Map<string, string>();
-            columnMappings.forEach(mapping => {
-                headerToSqlMap.set(mapping.originalHeader, mapping.sqlColumnName);
-            });
             
-            // Map the headers to SQL column names
-            const sqlHeaders = parsedData.headers.map(header => 
-                headerToSqlMap.get(header) || normalizeColumnName(header, parsedData.headers.indexOf(header))
-            );
+            // Use stored column mappings if available
+            if (tableConfig.columnMappings && tableConfig.columnMappings.length > 0) {
+                console.log("Using stored column mappings from metadata");
+                tableConfig.columnMappings.forEach(mapping => {
+                    headerToSqlMap.set(mapping.originalHeader, mapping.sqlColumnName);
+                });
+            }
+            
+            // Map the headers to SQL column names with fallback to normalization
+            const sqlHeaders = parsedData.headers.map((header, index) => {
+                const mappedName = headerToSqlMap.get(header);
+                if (mappedName) {
+                    return mappedName;
+                } else {
+                    console.log(`No mapping found for header "${header}", using normalized name`);
+                    return normalizeColumnName(header, index);
+                }
+            });
 
             // Import data using the mapped headers
-            const result = await importData(dbPath, tableName, parsedData.data, sqlHeaders);
+            const result = await importData(dbPath, tableConfig.tableName, parsedData.data, sqlHeaders);
 
             return {
-                message: `Successfully imported ${result.rowsImported} rows into table '${tableName}'`,
+                message: `Successfully imported ${result.rowsImported} rows into table '${tableConfig.tableName}'`,
                 sheetName,
-                tableName,
+                tableName: tableConfig.tableName,
                 rowsImported: result.rowsImported,
                 totalRows: parsedData.data.length,
                 originalHeaders: parsedData.headers,
-                sqlHeaders: sqlHeaders
+                sqlHeaders: sqlHeaders,
+                mappingsUsed: tableConfig.columnMappings ? tableConfig.columnMappings.length : 0,
+                fallbackMappings: sqlHeaders.length - (tableConfig.columnMappings ? tableConfig.columnMappings.length : 0)
             };
         } catch (error) {
             console.error(`Error importing data: ${error}`);
@@ -298,10 +323,11 @@ const excelTool = new Stimulus({
         "7. Examples: 'Overall Rank' → 'overall_rank', 'Brand Name' → 'brand_name', 'Total Followers' → 'total_followers'",
         "8. Decide on appropriate SQL data types for each column",
         "9. Choose import strategy (single_table for similar sheets, separate_tables for different sheets)",
-        "10. Write the configuration using writeConfigTool",
-        "11. Create the SQLite table using createTableTool with your proposed meaningful column names",
-        "12. Import the data using importDataTool with the column mappings",
+        "10. Write the configuration using writeConfigTool - this now includes columnMappings that will be stored in metadata",
+        "11. Create the SQLite table using createTableTool (reads from metadata automatically)",
+        "12. Import the data using importDataTool (reads mappings from metadata automatically)",
         "CRITICAL: You must propose meaningful column names that preserve the original meaning",
+        "The column mappings are now stored in dataLoaderMetadata.json for persistence and reusability",
         "Provide clear feedback about your analysis and decisions"
     ],
     tools: { 

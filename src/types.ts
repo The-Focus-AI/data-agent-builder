@@ -34,6 +34,31 @@ export interface ExcelReaderOptions {
   defaultMaxRows?: number;
 }
 
+/**
+ * Column Mapping - Maps original Excel headers to SQL column names
+ */
+export interface ColumnMapping {
+  originalHeader: string;
+  sqlColumnName: string;
+  dataType: string;
+  nullable: boolean;
+}
+
+/**
+ * Table Configuration with Column Mappings
+ */
+export interface TableConfig {
+  tableName: string;
+  importStrategy: 'single_table' | 'separate_tables';
+  sheetColumnName?: string;
+  columnMappings?: ColumnMapping[];
+  columns: Array<{
+    name: string;
+    dataType: string;
+    nullable: boolean;
+  }>;
+}
+
 // Error Classes - Simple error handling only
 export class FileNotFoundError extends Error {
   constructor(filePath: string) {
