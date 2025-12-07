@@ -6,7 +6,8 @@
 		"test": "tsx --test test/**/*.test.ts",
 		"dev": "tsx src/index.ts",
 		"models": "umwelten models",
-		"analyze": "tsx src/analyzeFile.ts"
+		"analyze": "tsx src/analyzeFile.ts",
+		"mcp:dev": "tsx src/mcp/server.ts"
 	},
 	"dependencies": {
 		"@types/xlsx": "^0.0.36",

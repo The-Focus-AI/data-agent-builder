@@ -46,15 +46,15 @@ function normalizeColumnName(header: string, index: number): string {
     return normalized;
 }
 
-let modelDetails = {
-    name: "qwen3:latest",
-    provider: "ollama"
-}
-
-// modelDetails = {
-//     name: "openai/gpt-4o",
-//     provider: "github-models"
+// let modelDetails = {
+//     name: "qwen3:latest",
+//     provider: "ollama"
 // }
+
+const modelDetails = {
+    name: "openai/gpt-4.1",
+provider: "openrouter"
+}
 
 
 // Parse command line arguments
@@ -306,6 +306,233 @@ const importDataTool = tool({
     }
 });
 
+// Tool 6: Generate MCP server scaffold and config
+const generateMcpServerTool = tool({
+    description: "Generate an MCP server scaffold that understands the analyzed schema and connects to the SQLite DB",
+    inputSchema: z.object({
+        outputDir: z.string().optional().describe("Target directory for server source (defaults to src/mcp)"),
+        docsDir: z.string().optional().describe("Target directory for usage docs (defaults to docs)"),
+        emitSchemaSql: z.boolean().optional().default(true).describe("Whether to write schema.sql into the workspaceDir"),
+    }),
+    execute: async ({ outputDir, docsDir, emitSchemaSql }) => {
+        const metadataPath = path.join(workspaceDir, "dataLoaderMetadata.json");
+        const parserConfigPath = path.join(workspaceDir, "parserConfig.json");
+
+        if (!fs.existsSync(metadataPath) || !fs.existsSync(parserConfigPath)) {
+            throw new Error("Required configs not found. Ensure parserConfig.json and dataLoaderMetadata.json exist (run writeConfigTool first).");
+        }
+
+        const tableConfig: TableConfig = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+
+        // Determine destinations
+        const serverSrcDir = path.resolve(process.cwd(), outputDir || 'src/mcp');
+        const docsOutputDir = path.resolve(process.cwd(), docsDir || 'docs');
+
+        // Ensure directories
+        fs.mkdirSync(serverSrcDir, { recursive: true });
+        fs.mkdirSync(docsOutputDir, { recursive: true });
+
+        // Write server-config.json to workspaceDir
+        const serverConfig = {
+            databasePath: path.join(workspaceDir, "data.db"),
+            metadataPath,
+            parserConfigPath,
+            defaultTableName: tableConfig.tableName
+        };
+        const serverConfigPath = path.join(workspaceDir, 'server-config.json');
+        fs.writeFileSync(serverConfigPath, JSON.stringify(serverConfig, null, 2));
+
+        // Optionally emit schema.sql derived from metadata
+        if (emitSchemaSql) {
+            const cols = tableConfig.columns.map(c => {
+                const nullable = c.nullable ? '' : ' NOT NULL';
+                return `  "${c.name}" ${c.dataType}${nullable}`;
+            }).join(',\n');
+            const schemaSql = `CREATE TABLE IF NOT EXISTS "${tableConfig.tableName}" (\n${cols}\n);\n`;
+            fs.writeFileSync(path.join(workspaceDir, 'schema.sql'), schemaSql);
+        }
+
+        // Write server source
+        const serverTsPath = path.join(serverSrcDir, 'server.ts');
+        const serverSourceLines = [
+          "import fs from 'fs';",
+          "import path from 'path';",
+          "import sqlite3 from 'sqlite3';",
+          "import { ExcelReader } from '../ExcelReader.js';",
+          "import { importData, createTable } from '../simpleDataLoader.js';",
+          "",
+          "type Json = any;",
+          "",
+          "interface RpcRequest { id: string | number; method: string; params?: Json; }",
+          "interface RpcResponse { id: string | number; result?: Json; error?: { message: string }; }",
+          "",
+          "function loadConfig() {",
+          "  const configPath = process.env.MCP_SERVER_CONFIG || path.resolve(process.cwd(), 'server-config.json');",
+          "  const raw = fs.readFileSync(configPath, 'utf8');",
+          "  return JSON.parse(raw) as { databasePath: string; metadataPath: string; parserConfigPath: string; defaultTableName?: string };",
+          "}",
+          "",
+          "function withDb<T>(dbPath: string, fn: (db: sqlite3.Database) => Promise<T>): Promise<T> {",
+          "  return new Promise((resolve, reject) => {",
+          "    const db = new sqlite3.Database(dbPath);",
+          "    fn(db).then((res) => { db.close(); resolve(res); }).catch((e) => { db.close(); reject(e); });",
+          "  });",
+          "}",
+          "",
+          "async function listTables(dbPath: string): Promise<string[]> {",
+          "  return withDb(dbPath, (db) => new Promise((resolve, reject) => {",
+          "    db.all(\"SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name\", (err, rows) => {",
+          "      if (err) return reject(err);",
+          "      resolve(rows.map((r: any) => r.name));",
+          "    });",
+          "  }));",
+          "}",
+          "",
+          "async function listColumns(dbPath: string, tableName: string): Promise<any[]> {",
+          "  return withDb(dbPath, (db) => new Promise((resolve, reject) => {",
+          "    db.all('PRAGMA table_info(\"' + tableName + '\")', (err, rows) => {",
+          "      if (err) return reject(err);",
+          "      resolve(rows);",
+          "    });",
+          "  }));",
+          "}",
+          "",
+          "async function describeSchema(dbPath: string) {",
+          "  const tables = await listTables(dbPath);",
+          "  const schema: Record<string, any[]> = {};",
+          "  for (const t of tables) {",
+          "    schema[t] = await listColumns(dbPath, t);",
+          "  }",
+          "  return schema;",
+          "}",
+          "",
+          "function ensureSelectOnly(sql: string) {",
+          "  const s = sql.trim().toLowerCase();",
+          "  if (!(s.startsWith('select') || s.startsWith('with '))) {",
+          "    throw new Error('Only SELECT queries are allowed');",
+          "  }",
+          "  if (s.includes(';')) {",
+          "    throw new Error('Semicolons are not allowed');",
+          "  }",
+          "}",
+          "",
+          "async function runQuery(dbPath: string, sql: string, params: any[] = []) {",
+          "  ensureSelectOnly(sql);",
+          "  return withDb(dbPath, (db) => new Promise((resolve, reject) => {",
+          "    db.all(sql, params, (err, rows) => {",
+          "      if (err) return reject(err);",
+          "      resolve(rows);",
+          "    });",
+          "  }));",
+          "}",
+          "",
+          "async function ingestFile(dbPath: string, metadataPath: string, parserConfigPath: string, filePath: string, sheetName?: string) {",
+          "  const tableConfig = JSON.parse(fs.readFileSync(metadataPath, 'utf8')) as { tableName: string; columns: Array<{ name: string; dataType: string; nullable: boolean }>; columnMappings?: Array<{ originalHeader: string; sqlColumnName: string }>; };",
+          "  const parserConfig = JSON.parse(fs.readFileSync(parserConfigPath, 'utf8'));",
+          "",
+          "  const reader = new ExcelReader(filePath);",
+          "  await reader.load();",
+          "  reader.configureParser(parserConfig);",
+          "  const sheets = reader.getSheets();",
+          "  const chosenSheet = sheetName && sheets.includes(sheetName) ? sheetName : sheets[0];",
+          "  const parsed = reader.getParsedData(chosenSheet);",
+          "",
+          "  // Ensure table exists",
+          "  await createTable(dbPath, tableConfig.tableName, tableConfig.columns.map(c => ({ name: c.name, dataType: c.dataType, nullable: c.nullable })));",
+          "",
+          "  // Map headers via metadata mappings when available",
+          "  const headerMap = new Map<string, string>();",
+          "  if (tableConfig.columnMappings) {",
+          "    for (const m of tableConfig.columnMappings) headerMap.set(m.originalHeader, m.sqlColumnName);",
+          "  }",
+          "  const sqlHeaders = parsed.headers.map((h: string, i: number) => headerMap.get(h) || h || ('col_' + i));",
+          "",
+          "  return await importData(dbPath, tableConfig.tableName, parsed.data, sqlHeaders);",
+          "}",
+          "",
+          "async function handle(method: string, params: any) {",
+          "  const cfg = loadConfig();",
+          "  switch (method) {",
+          "    case 'list_tables':",
+          "      return await listTables(cfg.databasePath);",
+          "    case 'list_columns':",
+          "      return await listColumns(cfg.databasePath, params?.tableName);",
+          "    case 'describe_schema':",
+          "      return await describeSchema(cfg.databasePath);",
+          "    case 'run_query':",
+          "      return await runQuery(cfg.databasePath, params?.sql, params?.params || []);",
+          "    case 'ingest_file':",
+          "      return await ingestFile(cfg.databasePath, cfg.metadataPath, cfg.parserConfigPath, params?.filePath, params?.sheetName);",
+          "    default:",
+          "      throw new Error('Unknown method: ' + method);",
+          "  }",
+          "}",
+          "",
+          "function send(resp: RpcResponse) {",
+          "  process.stdout.write(JSON.stringify(resp) + '\n');",
+          "}",
+          "",
+          "let buffer = '';",
+          "process.stdin.setEncoding('utf8');",
+          "process.stdin.on('data', (chunk) => {",
+          "  buffer += chunk;",
+          "  let idx;",
+          "  while ((idx = buffer.indexOf('\n')) >= 0) {",
+          "    const line = buffer.slice(0, idx);",
+          "    buffer = buffer.slice(idx + 1);",
+          "    if (!line.trim()) continue;",
+          "    try {",
+          "      const req = JSON.parse(line) as RpcRequest;",
+          "      Promise.resolve(handle(req.method, req.params)).then((result) => send({ id: req.id, result })).catch((e) => send({ id: req.id, error: { message: e.message } }));",
+          "    } catch (e: any) {",
+          "      send({ id: 'unknown', error: { message: e?.message || 'Invalid JSON' } });",
+          "    }",
+          "  }",
+          "});",
+          "",
+          "console.log('[MCP] Server ready. Set MCP_SERVER_CONFIG or place server-config.json in CWD.');",
+        ];
+        const serverSource = serverSourceLines.join('\n');
+        fs.writeFileSync(serverTsPath, serverSource);
+
+        // Write usage docs (avoid code fences to keep generation simple)
+        const usageDocPath = path.join(docsOutputDir, 'mcp-server-usage.md');
+        const usageDocLines = [
+          '### MCP Server Usage',
+          '',
+          '- Generate with the analysis flow\'s generate tool; then run:',
+          '',
+          '$ pnpm run mcp:dev',
+          '',
+          '- Send JSON-RPC requests over stdin (newline-delimited). Examples:',
+          '',
+          `$ printf '{"id":1,"method":"list_tables"}\n' | pnpm run mcp:dev`,
+          `$ printf '{"id":2,"method":"describe_schema"}\n' | pnpm run mcp:dev`,
+          `$ printf '{"id":3,"method":"run_query","params":{"sql":"select * from ${tableConfig.tableName} limit 5"}}\n' | pnpm run mcp:dev`,
+          '',
+          '- Configure via',
+          '  - env:',
+          '    - `MCP_SERVER_CONFIG` → absolute path to a server-config.json',
+          '  - file:',
+          '    - `server-config.json` in current working directory',
+          '',
+          'Artifacts emitted at generation time into the workspace:',
+          '- `server-config.json` with database and config paths',
+          '- `schema.sql` derived from `dataLoaderMetadata.json`',
+        ];
+        const usageDoc = usageDocLines.join('\n');
+        fs.writeFileSync(usageDocPath, usageDoc);
+
+        return {
+            message: "MCP server scaffold generated",
+            serverSource: serverTsPath,
+            docsPath: usageDocPath,
+            serverConfigPath,
+            schemaSqlPath: emitSchemaSql ? path.join(workspaceDir, 'schema.sql') : undefined
+        };
+    }
+});
+
 const excelTool = new Stimulus({
     role: "Excel Analysis and Import Assistant",
     objective: "Analyze Excel files and import them into SQLite databases",
@@ -336,7 +563,8 @@ const excelTool = new Stimulus({
         getParsedHeadersTool,
         writeConfigTool, 
         createTableTool, 
-        importDataTool 
+        importDataTool,
+        generateMcpServerTool 
     },
     maxToolSteps: 15
   });
